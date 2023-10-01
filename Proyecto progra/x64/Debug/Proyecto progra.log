@@ -1,3 +1,0 @@
-﻿  Proyecto progra.cpp
-C:\Users\ruben\source\repos\Proyecto progra\Proyecto progra\Proyecto progra.cpp(15,15): warning C4244: 'argumento': conversión de 'time_t' a 'unsigned int'; posible pérdida de datos
-  Proyecto progra.vcxproj -> C:\Users\ruben\source\repos\Proyecto progra\x64\Debug\Proyecto progra.exe
