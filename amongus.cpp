@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include "EnemigosIA.h" 
 #include <vector> 
+#include <chrono>
+#include <thread>
 
 // Estructura para representar los cofres
 struct Cofre {
@@ -14,15 +16,83 @@ struct Cofre {
     int recompensa; // 0: Ninguna, 1: Experiencia, 2: Vida, 3: Puntos
 };
 
+struct Disparo {
+    int x;
+    int y;
+    bool activo;
+};
+
+void inicializarDisparo(Disparo &disparo, int x, int y) {
+    disparo.x = x;
+    disparo.y = y;
+    disparo.activo = true;
+}
+
+void moverDisparos(std::vector<Disparo> &disparos, int a, int h, bool** mapa, int monstruoX, int monstruoY, int &puntos) {
+    for (auto it = disparos.begin(); it != disparos.end(); ) {
+        if (it->activo) {
+            // Mueve el disparo hacia arriba (puedes ajustar la dirección)
+            it->y--;
+
+            // Verifica si el disparo golpea al monstruo
+            if (it->x == monstruoX && it->y == monstruoY) {
+                // Desactiva el disparo
+                it->activo = false;
+                // Incrementa los puntos
+                puntos += 10; // Puedes ajustar la puntuación
+            }
+
+            // Verifica si el disparo sale del mapa o choca con un muro
+            if (it->y < 0 || mapa[it->y][it->x]) {
+                // Desactiva el disparo
+                it->activo = false;
+            }
+
+            // Elimina el disparo si está desactivado
+            if (!it->activo) {
+                it = disparos.erase(it);
+            } else {
+                ++it;
+            }
+        } else {
+            ++it;
+        }
+    }
+}
+
+void mostrarDisparos(std::vector<Disparo> &disparos) {
+    for (const auto &disparo : disparos) {
+        if (disparo.activo) {
+            mvaddch(disparo.y, disparo.x, '|'); // Puedes ajustar el carácter del disparo
+        }
+    }
+}
+
+
 // Función para generar cofres de manera aleatoria en el mapa
 std::vector<Cofre> generarCofres(int a, int h, int numCofres, bool** mapa) {
-    std::vector<Cofre> cofres;
+     std::vector<Cofre> cofres;
     for (int i = 0; i < numCofres; i++) {
         Cofre cofre;
         do {
             cofre.x = rand() % (a - 2) + 1;
             cofre.y = rand() % (h - 2) + 1;
         } while (mapa[cofre.y][cofre.x]); // Verifica que la posición no esté ocupada por un muro
+
+        // Verifica si la posición del cofre no está ocupada por otro cofre
+        bool cofreExisteEnPosicion = false;
+        for (const auto& otroCofre : cofres) {
+            if (cofre.x == otroCofre.x && cofre.y == otroCofre.y) {
+                cofreExisteEnPosicion = true;
+                break;
+            }
+        }
+
+        // Si hay otro cofre en la misma posición, vuelve a generar las coordenadas
+        if (cofreExisteEnPosicion) {
+            continue;
+        }
+
         cofre.recompensa = rand() % 4; // 0, 1, 2, o 3 (ninguna, experiencia, vida, puntos)
         cofres.push_back(cofre);
     }
@@ -57,7 +127,7 @@ void verificarCofres(int playerX, int playerY, std::vector<Cofre> &cofres, int &
 }
 
 // Function to print the map
-void tablero(int a, int h, int personaje[2], int monstruo[2], int c1x, int c1y, int c2x, int c2y, bool** mapa) {
+void tablero(int a, int h, int personaje[2], int monstruo[2], int c1x, int c1y, int c2x, int c2y, bool** mapa, int &prevX, int &prevY) {
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < a; x++) {
             if (mapa[y][x]) {
@@ -72,7 +142,13 @@ void tablero(int a, int h, int personaje[2], int monstruo[2], int c1x, int c1y, 
                 std::cout << ' '; // Espacio libre
             }
         }
+
         std::cout << std::endl;
+    }
+    if (mapa[personaje[1]][personaje[0]]) {
+        // El jugador ha chocado contra un muro, restaura la posición anterior.
+        personaje[0] = prevX;
+        personaje[1] = prevY;
     }
 }
 
@@ -115,8 +191,18 @@ int main() {
     char reinicio;
     int rangoVision = 8;
     bool **mapa = nullptr;
+    int prevX;
+    int prevY;
+    int vida = 100;
+    std::vector<Disparo> disparos;
+    int puntos = 0;
     
+    
+
     do{
+
+        int tiempoTranscurrido = 0;
+        auto startTime = std::chrono::steady_clock::now();
           
         srand(time(NULL));     // Generate a seed for random numbers
         initscr();             // Initialize the terminal for standard keyboard input
@@ -126,8 +212,8 @@ int main() {
         int score = 0;
         
         // Map with random dimensions
-        int a = rand() % 16 + 5;
-        int h = rand() % 16 + 5;
+        int a = 25;
+        int h = 25;
     
         int personaje[2] = {1, 1}; // Initial character coordinates
         int monstruo[2] = {a-2, h-2};  // Initial monster coordinates
@@ -152,8 +238,6 @@ int main() {
                 std::vector<Cofre> cofres = generarCofres(a, h, 4, mapa);
             }
 
-        int playerX;
-        int playerY;
 
     
         std::cout << "AmongUs PROPE uniat" << std::endl;
@@ -164,6 +248,7 @@ int main() {
     
             std::cout << "Menu de Inicio:" << std::endl;
             std::cout << "1. Start" << std::endl;
+
     
     
             std::cout << "Seleccione una opcion: ";
@@ -190,65 +275,94 @@ int main() {
 
         
         
-        while (score < 10 && (ch = getch()) != 'q') { 
+        while (score < 3 && (ch = getch()) != 'q') { 
             
+        
             
             moveEnemy(monstruo[0], monstruo[1], personaje[0], personaje[1], rangoVision, h, a);
             
             
-
+            
 
             system("clear");
     
             switch(ch) {
                 case KEY_UP:
-                    if (personaje[1] > 1){
-                        //printw("Tecla de dirección hacia arriba\n");
+                    if (personaje[1] > 1 && !mapa[personaje[1] - 1][personaje[0]]){
+                        prevX = personaje[0]; // Guarda la posición X previa antes de mover al jugador
+                        prevY = personaje[1]; // Guarda la posición Y previa antes de mover al jugador
                         personaje[1]--;
                     }
                     break;
                 case KEY_DOWN:
-                    if (personaje[1] < h - 2){
-                        //printw("Tecla de dirección hacia abajo\n");
+                    if (personaje[1] < h - 2 && !mapa[personaje[1] + 1][personaje[0]]){
+                        prevX = personaje[0]; // Guarda la posición X previa antes de mover al jugador
+                        prevY = personaje[1]; // Guarda la posición Y previa antes de mover al jugador
                         personaje[1]++;
                     }
                     break;
                 case KEY_LEFT:
-                    if (personaje[0] > 1){
-                        //printw("Tecla de dirección hacia la izquierda\n");
+                    if (personaje[0] > 1 && !mapa[personaje[1]][personaje[0] - 1]){
+                        prevX = personaje[0]; // Guarda la posición X previa antes de mover al jugador
+                        prevY = personaje[1]; // Guarda la posición Y previa antes de mover al jugador
                         personaje[0]--;
                     }
                     break;
                 case KEY_RIGHT:
-                    if (personaje[0] < a - 2){
-                        //printw("Tecla de dirección hacia la derecha\n");
+                    if (personaje[0] < a - 2 && !mapa[personaje[1]][personaje[0] + 1]){
+                        prevX = personaje[0]; // Guarda la posición X previa antes de mover al jugador
+                        prevY = personaje[1]; // Guarda la posición Y previa antes de mover al jugador
                         personaje[0]++;
                     }
                     break;
+
+                    case ' ': // Espacio para disparar
+                // Crear un nuevo disparo en la posición del jugador
+                Disparo disparo;
+                inicializarDisparo(disparo, personaje[0], personaje[1]);
+                disparos.push_back(disparo);
+                break;
+
+                    
 
                     refresh();
 
 
             }
+
+            moverDisparos(disparos, a, h, mapa, monstruo[0], monstruo[1], puntos);
+            mostrarDisparos(disparos);
             
             if (isTouching(personaje[0], personaje[1], c_1x, c_1y, c_2x, c_2y, monstruo[0], monstruo[1]) == 1) {
                 score++;
                 c_1x = rand() % (a - 2) + 1;
                 c_1y = rand() % (h - 2) + 1;
-                std::cout << "¡Recolectaste un punto!" << std::endl;
+                puntos = puntos + 1;
+                printf("\nPuntos = %d",puntos);
             }
 
             if (isTouching(personaje[0], personaje[1], c_1x, c_1y, c_2x, c_2y, monstruo[0], monstruo[1]) == 2) {
-                std::cout << "¡Perdiste!" << std::endl;
+                vida = vida-20;
+                printf("vida = %d\n",vida);
             }            
             
             refresh();
             
-            tablero(a, h, personaje, monstruo, c_1x, c_1y, c_2x, c_2y, mapa);
+            tablero(a, h, personaje, monstruo, c_1x, c_1y, c_2x, c_2y, mapa, prevX, prevY);
+            
+            
+            system("clear");
+            
 
-            if (score == 10) {
+            if (score == 3) {
                 displayMessage("ganaste\n");
                 sleep(2);
+            }
+
+            if (vida == 0)
+            {
+              displayMessage("PERDISTE\n");
+              sleep(2);
             }               
             
         }  
